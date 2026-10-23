@@ -14,7 +14,7 @@ public static class Shell
     private static readonly Random _rng = new();
     private static Dictionary<string, string> _cmdDescriptions = new(StringComparer.OrdinalIgnoreCase);
 
-    public static readonly string Version = "DaniShell v4.0.0";
+    public static readonly string Version = "DaniShell v4.0.1";
     public static readonly string Author = "Desarrollado por Daniel";
     public static readonly string City = "Ciudad Juárez, Chihuahua 🇲🇽";
 
@@ -49,7 +49,7 @@ public static class Shell
         Plugins.PluginLoader.LoadPlugins();
 
         // Directorio inicial
-        if (!string.IsNullOrEmpty(Configuration.Config.StartDirectory) && 
+        if (!string.IsNullOrEmpty(Configuration.Config.StartDirectory) &&
             Directory.Exists(Configuration.Config.StartDirectory))
         {
             CurrentDirectory = Configuration.Config.StartDirectory;
@@ -74,16 +74,17 @@ public static class Shell
         while (true)
         {
             PrintPrompt(CurrentDirectory);
-            
+
             var input = InputHandler.ReadLine(CurrentDirectory, AutoComplete);
-            
+
             if (string.IsNullOrWhiteSpace(input))
                 continue;
 
             InputHandler.AddToHistory(input);
-            
+
             // Procesar el comando
-            CurrentDirectory = HandleCommand(input.Trim());
+            try { ExecuteLine(input.Trim(), CurrentDirectory); }
+            catch (ArgumentException ex) { ThemeManager.WriteError(ex.Message); }
         }
     }
 
@@ -122,9 +123,9 @@ public static class Shell
         Console.Clear();
 
         string bannerText = LoadRandomBanner();
-        
+
         Console.ForegroundColor = Configuration.ParseColor(Configuration.CurrentTheme.Banner);
-        
+
         using var sr = new StringReader(bannerText);
         string? line;
         while ((line = sr.ReadLine()) != null)
@@ -146,7 +147,7 @@ public static class Shell
         try
         {
             var bannerFolder = Path.Combine(AppContext.BaseDirectory, "banners");
-            
+
             if (!Directory.Exists(bannerFolder))
             {
                 Directory.CreateDirectory(bannerFolder);
@@ -158,10 +159,10 @@ public static class Shell
                 return GetEmbeddedBanner();
 
             var content = File.ReadAllText(files[_rng.Next(files.Length)], Encoding.UTF8);
-            
+
             // Limpiar caracteres @" del inicio de línea (bug de los banners originales)
             content = content.Replace("@\"", "").Replace("\",", "");
-            
+
             return content;
         }
         catch
@@ -212,20 +213,14 @@ public static class Shell
         Console.Write($" {dir}> ");
     }
 
-    private static string HandleCommand(string input)
+    private static string HandleCommand(string input, string? standardInput = null)
     {
         try
         {
             // Expandir alias
             input = ExpandAlias(input);
 
-            // Soporte para pipes básico (cmd | cmd)
-            if (input.Contains('|'))
-            {
-                return HandlePipe(input);
-            }
-
-            var parts = ParseCommandLine(input);
+            var parts = CommandLine.ParseArguments(input);
             if (parts.Length == 0) return CurrentDirectory;
 
             var cmd = parts[0].ToLower();
@@ -246,7 +241,7 @@ public static class Shell
             // 2. Verificar si es comando Linux
             if (Commands.LinuxCommands.IsLinuxCommand(cmd))
             {
-                var result = Commands.LinuxCommands.Execute(cmd, args, CurrentDirectory);
+                var result = Commands.LinuxCommands.Execute(cmd, args, CurrentDirectory, standardInput);
                 if (result != null)
                 {
                     BeepDone();
@@ -272,7 +267,7 @@ public static class Shell
             }
 
             // 5. Ejecutar como comando externo (CMD/PowerShell)
-            ExecuteExternal(input, CurrentDirectory);
+            ExecuteExternal(input, CurrentDirectory, standardInput);
             BeepDone();
             return CurrentDirectory;
         }
@@ -290,107 +285,62 @@ public static class Shell
 
         if (Configuration.Aliases.TryGetValue(parts[0], out var alias))
         {
-            return parts.Length > 1 
-                ? $"{alias} {parts[1]}" 
+            return parts.Length > 1
+                ? $"{alias} {parts[1]}"
                 : alias;
         }
         return input;
     }
 
-    private static string[] ParseCommandLine(string input)
+    // Pipelines are buffered text pipelines. Every stage uses the same dispatcher,
+    // so native commands and plugins work without requiring external equivalents.
+    public static string ExecuteLine(string input, string directory, string? standardInput = null)
     {
-        var result = new List<string>();
-        var current = new StringBuilder();
-        bool inQuotes = false;
-        char quoteChar = '"';
-
-        foreach (var c in input)
-        {
-            if ((c == '"' || c == '\'') && !inQuotes)
-            {
-                inQuotes = true;
-                quoteChar = c;
-            }
-            else if (c == quoteChar && inQuotes)
-            {
-                inQuotes = false;
-            }
-            else if (c == ' ' && !inQuotes)
-            {
-                if (current.Length > 0)
-                {
-                    result.Add(current.ToString());
-                    current.Clear();
-                }
-            }
-            else
-            {
-                current.Append(c);
-            }
-        }
-
-        if (current.Length > 0)
-            result.Add(current.ToString());
-
-        return result.ToArray();
-    }
-
-    private static string HandlePipe(string input)
-    {
-        // Soporte básico de pipes
-        var commands = input.Split('|').Select(c => c.Trim()).ToArray();
-        
-        ThemeManager.WriteMuted("Ejecutando pipeline...");
-        
-        // Por ahora, ejecutar como comando externo
-        ExecuteExternal(input, CurrentDirectory);
-        return CurrentDirectory;
-    }
-
-    public static void ExecuteExternal(string input, string workDir)
-    {
+        var stages = CommandLine.SplitPipeline(ExpandAlias(input));
+        if (stages.Length > 1 && stages.Any(stage =>
+            CommandLine.ParseArguments(stage).FirstOrDefault()?.Equals("ssh", StringComparison.OrdinalIgnoreCase) == true))
+            throw new ArgumentException("SSH usa una consola interactiva; ejecútalo fuera de una tubería.");
+        CurrentDirectory = directory;
+        var originalOut = Console.Out;
+        var originalIn = Console.In;
+        string? data = standardInput;
         try
         {
-            var shell = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "cmd.exe" : "/bin/bash";
-            var shellArg = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "/c" : "-c";
-
-            var psi = new ProcessStartInfo(shell, $"{shellArg} {input}")
+            for (int i = 0; i < stages.Length; i++)
             {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = workDir
-            };
-
-            _activeProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
-
-            _activeProcess.OutputDataReceived += (s, e) =>
-            {
-                if (!string.IsNullOrEmpty(e.Data))
-                    Console.WriteLine(e.Data);
-            };
-
-            _activeProcess.ErrorDataReceived += (s, e) =>
-            {
-                if (!string.IsNullOrEmpty(e.Data))
-                    ThemeManager.WriteError(e.Data);
-            };
-
-            _activeProcess.Start();
-            _activeProcess.BeginOutputReadLine();
-            _activeProcess.BeginErrorReadLine();
-            _activeProcess.WaitForExit();
-        }
-        catch (Exception ex)
-        {
-            ThemeManager.WriteError($"Error: {ex.Message}");
+                using var output = new StringWriter();
+                if (stages.Length > 1) Console.SetOut(output);
+                if (data != null) Console.SetIn(new StringReader(data));
+                CurrentDirectory = HandleCommand(stages[i], data);
+                if (stages.Length > 1) data = output.ToString();
+                Console.SetOut(originalOut);
+                Console.SetIn(originalIn);
+            }
+            if (stages.Length > 1) originalOut.Write(data);
+            return CurrentDirectory;
         }
         finally
         {
-            _activeProcess = null;
+            Console.SetOut(originalOut);
+            Console.SetIn(originalIn);
         }
     }
+
+    public static void ExecuteExternal(string input, string workDir, string? standardInput = null)
+    {
+        var windows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+        var arguments = windows ? new[] { "/d", "/s", "/c", input } : new[] { "-c", input };
+        var psi = ProcessRunner.Create(windows ? "cmd.exe" : "/bin/bash", arguments, workDir);
+        // CMD expects its command expression as a single raw command line.
+        if (windows)
+        {
+            psi.ArgumentList.Clear();
+            psi.Arguments = "/d /s /c \"" + input + "\"";
+        }
+        ProcessRunner.Run(psi, standardInput, p => _activeProcess = p);
+    }
+
+    public static void TrackProcess(Process? process) => _activeProcess = process;
 
     private static string AutoComplete(string partial)
     {
@@ -406,13 +356,13 @@ public static class Shell
             "help", "exit", "quit", "cls", "clear", "cd", "dir", "ls", "lsd",
             "whoami", "theme", "runas", "sysinfo", "about", "sound", "history",
             "alias", "unalias", "config", "plugins", "reload", "banner", "prompt",
-            
+
             // Linux
             "cat", "touch", "rm", "cp", "mv", "grep", "pwd", "head", "tail",
             "mkdir", "rmdir", "chmod", "find", "wc", "sort", "uniq", "diff",
             "tar", "curl", "wget", "awk", "sed", "echo", "stat", "file", "which",
             "env", "export", "unset", "printenv",
-            
+
             // Network
             "ping", "tracert", "ipinfo", "netstat", "nmap", "nslookup",
             "httpget", "httphead", "httppost", "ftplist", "ftpget", "ftpput", "ssh"
@@ -471,7 +421,7 @@ public static class Shell
     private static void BeepDone()
     {
         if (!Configuration.Config.SoundEnabled) return;
-        
+
         try
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

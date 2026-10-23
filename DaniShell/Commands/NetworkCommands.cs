@@ -97,7 +97,7 @@ public static class NetworkCommands
             var data = response.Content.ReadAsByteArrayAsync().Result;
 
             Core.ThemeManager.WriteLine($"Status: {(int)response.StatusCode} {response.ReasonPhrase}", "Info");
-            
+
             foreach (var h in response.Headers)
                 Console.WriteLine($"{h.Key}: {string.Join(", ", h.Value)}");
             foreach (var h in response.Content.Headers)
@@ -140,7 +140,7 @@ public static class NetworkCommands
             var response = _http.SendAsync(request).Result;
 
             Core.ThemeManager.WriteLine($"Status: {(int)response.StatusCode} {response.ReasonPhrase}", "Info");
-            
+
             foreach (var h in response.Headers)
                 Console.WriteLine($"{h.Key}: {string.Join(", ", h.Value)}");
             foreach (var h in response.Content.Headers)
@@ -215,7 +215,7 @@ public static class NetworkCommands
         {
             var request = (FtpWebRequest)WebRequest.Create(uri);
             request.Method = WebRequestMethods.Ftp.ListDirectoryDetails;
-            
+
             var cred = ParseFtpCreds(uri);
             if (cred != null) request.Credentials = cred;
 
@@ -250,7 +250,7 @@ public static class NetworkCommands
         {
             var request = (FtpWebRequest)WebRequest.Create(uri);
             request.Method = WebRequestMethods.Ftp.DownloadFile;
-            
+
             var cred = ParseFtpCreds(uri);
             if (cred != null) request.Credentials = cred;
 
@@ -292,7 +292,7 @@ public static class NetworkCommands
         {
             var request = (FtpWebRequest)WebRequest.Create(uri);
             request.Method = WebRequestMethods.Ftp.UploadFile;
-            
+
             var cred = ParseFtpCreds(uri);
             if (cred != null) request.Credentials = cred;
 
@@ -319,34 +319,9 @@ public static class NetworkCommands
             return;
         }
 
-        var psi = new ProcessStartInfo
-        {
-            FileName = "ssh",
-            Arguments = string.Join(' ', args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a)),
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = dir
-        };
-
-        try
-        {
-            using var process = Process.Start(psi);
-            var output = process!.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-
-            if (!string.IsNullOrWhiteSpace(output))
-                Console.WriteLine(output);
-            if (!string.IsNullOrWhiteSpace(error))
-                Core.ThemeManager.WriteError(error);
-        }
-        catch (Exception ex)
-        {
-            Core.ThemeManager.WriteError($"No se pudo ejecutar ssh. Asegúrate de tener OpenSSH instalado.");
-            Core.ThemeManager.WriteMuted($"Error: {ex.Message}");
-        }
+        // SSH needs the real console for password prompts and interactive sessions.
+        var psi = Core.ProcessRunner.Create("ssh", args, dir);
+        Core.ProcessRunner.RunInteractive(psi, Core.Shell.TrackProcess);
     }
 
     private static void ExecuteNmap(string[] args, string dir)
@@ -358,33 +333,7 @@ public static class NetworkCommands
             return;
         }
 
-        var psi = new ProcessStartInfo
-        {
-            FileName = "nmap",
-            Arguments = string.Join(' ', args),
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = dir
-        };
-
-        try
-        {
-            using var process = Process.Start(psi);
-            var output = process!.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-
-            if (!string.IsNullOrWhiteSpace(output))
-                Console.WriteLine(output);
-            if (!string.IsNullOrWhiteSpace(error))
-                Core.ThemeManager.WriteError(error);
-        }
-        catch (Exception ex)
-        {
-            Core.ThemeManager.WriteError("Error ejecutando nmap. Asegúrate de tenerlo instalado y en PATH.");
-            Core.ThemeManager.WriteMuted($"Detalle: {ex.Message}");
-        }
+        var psi = Core.ProcessRunner.Create("nmap", args, dir);
+        Core.ProcessRunner.Run(psi, active: Core.Shell.TrackProcess);
     }
 }

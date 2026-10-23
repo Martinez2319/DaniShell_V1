@@ -10,10 +10,11 @@ namespace DaniShell.Commands;
 /// </summary>
 public static class LinuxCommands
 {
-    public static string Execute(string cmd, string[] args, string currentDir)
+    public static string Execute(string cmd, string[] args, string currentDir, string? standardInput = null)
     {
         try
         {
+            if (standardInput != null) args = PrepareStandardInput(cmd, args);
             return cmd.ToLower() switch
             {
                 "cat" => Cat(args, currentDir),
@@ -85,18 +86,18 @@ public static class LinuxCommands
         }
 
         bool showLineNumbers = args.Contains("-n");
-        var files = args.Where(a => !a.StartsWith("-")).ToArray();
+        var files = args.Where(a => (a == "-" || !a.StartsWith("-"))).ToArray();
 
         foreach (var file in files)
         {
             var path = GetFullPath(file, dir);
-            if (!File.Exists(path))
+            if (path != "-" && !File.Exists(path))
             {
                 Core.ThemeManager.WriteError($"cat: {file}: No existe el archivo");
                 continue;
             }
 
-            var lines = File.ReadAllLines(path);
+            var lines = ReadInputLines(path);
             for (int i = 0; i < lines.Length; i++)
             {
                 if (showLineNumbers)
@@ -271,7 +272,7 @@ public static class LinuxCommands
         bool recursive = args.Contains("-r");
         bool invert = args.Contains("-v");
 
-        var nonFlags = args.Where(a => !a.StartsWith("-")).ToArray();
+        var nonFlags = args.Where(a => (a == "-" || !a.StartsWith("-"))).ToArray();
         if (nonFlags.Length == 0)
         {
             Console.WriteLine("Uso: grep [-i] [-n] [-r] [-v] <patrón> [archivo...]");
@@ -283,8 +284,8 @@ public static class LinuxCommands
 
         if (files.Length == 0)
         {
-            files = recursive 
-                ? Directory.GetFiles(dir, "*", SearchOption.AllDirectories) 
+            files = recursive
+                ? Directory.GetFiles(dir, "*", SearchOption.AllDirectories)
                 : Directory.GetFiles(dir);
         }
         else
@@ -297,11 +298,11 @@ public static class LinuxCommands
 
         foreach (var file in files)
         {
-            if (!File.Exists(file)) continue;
-            
+            if (file != "-" && !File.Exists(file)) continue;
+
             try
             {
-                var lines = File.ReadAllLines(file);
+                var lines = ReadInputLines(file);
                 for (int i = 0; i < lines.Length; i++)
                 {
                     bool matches = regex.IsMatch(lines[i]);
@@ -311,13 +312,13 @@ public static class LinuxCommands
                     {
                         var prefix = files.Length > 1 ? $"{Path.GetFileName(file)}:" : "";
                         var lineNum = showLineNum ? $"{i + 1}:" : "";
-                        
+
                         Console.ForegroundColor = ConsoleColor.Cyan;
                         Console.Write(prefix);
                         Console.ForegroundColor = ConsoleColor.Yellow;
                         Console.Write(lineNum);
                         Console.ResetColor();
-                        
+
                         // Resaltar coincidencias
                         var line = lines[i];
                         var match = regex.Match(line);
@@ -363,7 +364,7 @@ public static class LinuxCommands
             {
                 lines = n;
             }
-            else if (!args[i].StartsWith("-"))
+            else if ((args[i] == "-" || !args[i].StartsWith("-")))
             {
                 files.Add(args[i]);
             }
@@ -378,7 +379,7 @@ public static class LinuxCommands
         foreach (var file in files)
         {
             var path = GetFullPath(file, dir);
-            if (!File.Exists(path))
+            if (path != "-" && !File.Exists(path))
             {
                 Core.ThemeManager.WriteError($"head: {file}: No existe");
                 continue;
@@ -387,7 +388,7 @@ public static class LinuxCommands
             if (files.Count > 1)
                 Console.WriteLine($"==> {file} <==");
 
-            var content = File.ReadLines(path).Take(lines);
+            var content = ReadInputLines(path).Take(lines);
             foreach (var line in content)
                 Console.WriteLine(line);
         }
@@ -410,7 +411,7 @@ public static class LinuxCommands
             {
                 lines = n;
             }
-            else if (!args[i].StartsWith("-"))
+            else if ((args[i] == "-" || !args[i].StartsWith("-")))
             {
                 files.Add(args[i]);
             }
@@ -425,7 +426,7 @@ public static class LinuxCommands
         foreach (var file in files)
         {
             var path = GetFullPath(file, dir);
-            if (!File.Exists(path))
+            if (path != "-" && !File.Exists(path))
             {
                 Core.ThemeManager.WriteError($"tail: {file}: No existe");
                 continue;
@@ -434,7 +435,7 @@ public static class LinuxCommands
             if (files.Count > 1)
                 Console.WriteLine($"==> {file} <==");
 
-            var allLines = File.ReadAllLines(path);
+            var allLines = ReadInputLines(path);
             var content = allLines.Skip(Math.Max(0, allLines.Length - lines));
             foreach (var line in content)
                 Console.WriteLine(line);
@@ -567,14 +568,14 @@ public static class LinuxCommands
         }
 
         var entries = Directory.GetFileSystemEntries(searchDir, "*", SearchOption.AllDirectories);
-        
+
         foreach (var entry in entries)
         {
             var name = Path.GetFileName(entry);
-            
+
             if (!string.IsNullOrEmpty(namePattern))
             {
-                var regex = new Regex("^" + Regex.Escape(namePattern).Replace("\\*", ".*").Replace("\\?", ".") + "$", 
+                var regex = new Regex("^" + Regex.Escape(namePattern).Replace("\\*", ".*").Replace("\\?", ".") + "$",
                     RegexOptions.IgnoreCase);
                 if (!regex.IsMatch(name))
                     continue;
@@ -597,26 +598,27 @@ public static class LinuxCommands
             return dir;
         }
 
-        bool countLines = args.Contains("-l") || !args.Any(a => a.StartsWith("-"));
-        bool countWords = args.Contains("-w") || !args.Any(a => a.StartsWith("-"));
-        bool countChars = args.Contains("-c") || !args.Any(a => a.StartsWith("-"));
+        bool defaultCounts = !args.Any(a => a.StartsWith("-") && a != "-");
+        bool countLines = args.Contains("-l") || defaultCounts;
+        bool countWords = args.Contains("-w") || defaultCounts;
+        bool countChars = args.Contains("-c") || defaultCounts;
 
-        var files = args.Where(a => !a.StartsWith("-")).ToArray();
+        var files = args.Where(a => (a == "-" || !a.StartsWith("-"))).ToArray();
         int totalLines = 0, totalWords = 0, totalChars = 0;
 
         foreach (var file in files)
         {
             var path = GetFullPath(file, dir);
-            if (!File.Exists(path))
+            if (path != "-" && !File.Exists(path))
             {
                 Core.ThemeManager.WriteError($"wc: {file}: No existe");
                 continue;
             }
 
-            var content = File.ReadAllText(path);
-            var lines = content.Split(' ').Length;
-            var words = content.Split(new[] { ' ', '	', ' ', ' ' }, StringSplitOptions.RemoveEmptyEntries).Length;
-            var chars = content.Length;
+            var content = ReadInputText(path);
+            var lines = content.Count(c => c == '\n');
+            var words = Regex.Matches(content, @"\S+").Count;
+            var chars = path == "-" ? Encoding.UTF8.GetByteCount(content) : checked((int)new FileInfo(path).Length);
 
             totalLines += lines;
             totalWords += words;
@@ -626,7 +628,7 @@ public static class LinuxCommands
             if (countLines) output.Append($"{lines,8}");
             if (countWords) output.Append($"{words,8}");
             if (countChars) output.Append($"{chars,8}");
-            output.Append($" {file}");
+            if (file != "-") output.Append($" {file}");
             Console.WriteLine(output.ToString());
         }
 
@@ -654,7 +656,7 @@ public static class LinuxCommands
         bool reverse = args.Contains("-r");
         bool numeric = args.Contains("-n");
         bool unique = args.Contains("-u");
-        var file = args.FirstOrDefault(a => !a.StartsWith("-"));
+        var file = args.FirstOrDefault(a => (a == "-" || !a.StartsWith("-")));
 
         if (file == null)
         {
@@ -663,13 +665,13 @@ public static class LinuxCommands
         }
 
         var path = GetFullPath(file, dir);
-        if (!File.Exists(path))
+        if (path != "-" && !File.Exists(path))
         {
             Core.ThemeManager.WriteError($"sort: {file}: No existe");
             return dir;
         }
 
-        var lines = File.ReadAllLines(path).ToList();
+        var lines = ReadInputLines(path).ToList();
 
         if (numeric)
             lines = lines.OrderBy(l => double.TryParse(l.Split()[0], out var n) ? n : 0).ToList();
@@ -697,18 +699,18 @@ public static class LinuxCommands
         bool count = args.Contains("-c");
         bool onlyDups = args.Contains("-d");
         bool onlyUnique = args.Contains("-u");
-        var file = args.FirstOrDefault(a => !a.StartsWith("-"));
+        var file = args.FirstOrDefault(a => (a == "-" || !a.StartsWith("-")));
 
         if (file == null) return dir;
 
         var path = GetFullPath(file, dir);
-        if (!File.Exists(path))
+        if (path != "-" && !File.Exists(path))
         {
             Core.ThemeManager.WriteError($"uniq: {file}: No existe");
             return dir;
         }
 
-        var lines = File.ReadAllLines(path);
+        var lines = ReadInputLines(path);
         string? prev = null;
         int cnt = 0;
 
@@ -805,7 +807,7 @@ public static class LinuxCommands
         Console.WriteLine("  Crear: tar -cvf archivo.tar directorio/");
         Console.WriteLine("  Extraer: tar -xvf archivo.tar");
         Console.WriteLine("  Listar: tar -tvf archivo.tar");
-        
+
         // Ejecutar tar nativo si existe
         if (args.Length > 0)
         {
@@ -927,7 +929,7 @@ public static class LinuxCommands
         {
             using var client = new HttpClient();
             var bytes = client.GetByteArrayAsync(url).Result;
-            
+
             outputFile ??= Path.GetFileName(new Uri(url).LocalPath);
             if (string.IsNullOrEmpty(outputFile))
                 outputFile = "download";
@@ -963,11 +965,11 @@ public static class LinuxCommands
             {
                 delimiter = Regex.Escape(args[++i]);
             }
-            else if (args[i].StartsWith("'") || args[i].StartsWith("\""))
+            else if (string.IsNullOrEmpty(pattern) && !args[i].StartsWith("-"))
             {
                 pattern = args[i].Trim(' ', '\'', '"');
             }
-            else if (!args[i].StartsWith("-"))
+            else if ((args[i] == "-" || !args[i].StartsWith("-")))
             {
                 file = args[i];
             }
@@ -980,7 +982,7 @@ public static class LinuxCommands
         }
 
         var path = GetFullPath(file, dir);
-        if (!File.Exists(path))
+        if (path != "-" && !File.Exists(path))
         {
             Core.ThemeManager.WriteError($"awk: {file}: No existe");
             return dir;
@@ -999,7 +1001,7 @@ public static class LinuxCommands
             .Select(f => f.TrimStart('$'))
             .ToArray();
 
-        foreach (var line in File.ReadLines(path))
+        foreach (var line in ReadInputLines(path))
         {
             var parts = Regex.Split(line.Trim(), delimiter);
             var output = new List<string>();
@@ -1030,7 +1032,7 @@ public static class LinuxCommands
         }
 
         bool inPlace = args.Contains("-i");
-        var nonFlags = args.Where(a => !a.StartsWith("-")).ToArray();
+        var nonFlags = args.Where(a => (a == "-" || !a.StartsWith("-"))).ToArray();
 
         if (nonFlags.Length < 2)
         {
@@ -1042,7 +1044,7 @@ public static class LinuxCommands
         var file = nonFlags[1];
 
         var path = GetFullPath(file, dir);
-        if (!File.Exists(path))
+        if (path != "-" && !File.Exists(path))
         {
             Core.ThemeManager.WriteError($"sed: {file}: No existe");
             return dir;
@@ -1060,7 +1062,7 @@ public static class LinuxCommands
         var replacement = match.Groups[2].Value;
         bool global = match.Groups[3].Success;
 
-        var lines = File.ReadAllLines(path);
+        var lines = ReadInputLines(path);
         var result = new List<string>();
 
         foreach (var line in lines)
@@ -1069,10 +1071,11 @@ public static class LinuxCommands
             if (global)
                 newLine = Regex.Replace(line, pattern, replacement);
             else
-                newLine = Regex.Replace(line, pattern, replacement, RegexOptions.None, TimeSpan.FromSeconds(1));
+                newLine = new Regex(pattern, RegexOptions.None, TimeSpan.FromSeconds(1)).Replace(line, replacement, 1);
             result.Add(newLine);
         }
 
+        if (inPlace && path == "-") throw new ArgumentException("sed -i requiere un archivo.");
         if (inPlace)
         {
             File.WriteAllLines(path, result);
@@ -1110,7 +1113,6 @@ public static class LinuxCommands
         if (file == null) return dir;
 
         var path = GetFullPath(file, dir);
-        Console.WriteLine("Escribe texto (Ctrl+Z para terminar):");
 
         var lines = new List<string>();
         string? line;
@@ -1132,15 +1134,13 @@ public static class LinuxCommands
     private static string Echo(string[] args)
     {
         bool noNewline = args.Contains("-n");
-        var text = string.Join(" ", args.Where(a => a != "-n"));
-        
+        var text = string.Join(" ", args.Where(a => a != "-n" && a != "-e"));
+
         // Expandir variables de entorno
         text = Environment.ExpandEnvironmentVariables(text);
-        
-        // Procesar secuencias de escape
-        text = text.Replace("", " ")
-                   .Replace("", "	")
-                   .Replace("", "");
+
+        if (args.Contains("-e"))
+            text = text.Replace(@"\n", "\n").Replace(@"\t", "\t").Replace(@"\r", "\r").Replace(@"\\", @"\");
 
         if (noNewline)
             Console.Write(text);
@@ -1379,8 +1379,35 @@ public static class LinuxCommands
     }
 
     // === Helper ===
+    private static string ReadInputText(string path) => path == "-" ? Console.In.ReadToEnd() : File.ReadAllText(path);
+
+    private static string[] ReadInputLines(string path)
+    {
+        if (path != "-") return File.ReadAllLines(path);
+        var lines = new List<string>();
+        string? line;
+        while ((line = Console.In.ReadLine()) != null) lines.Add(line);
+        return lines.ToArray();
+    }
+
+    private static string[] PrepareStandardInput(string cmd, string[] args)
+    {
+        var operands = new List<string>();
+        for (int i = 0; i < args.Length; i++)
+        {
+            if ((cmd is "head" or "tail") && args[i] == "-n") { i++; continue; }
+            if (cmd == "awk" && args[i] == "-F") { i++; continue; }
+            if (args[i] == "-" || !args[i].StartsWith("-")) operands.Add(args[i]);
+        }
+        int expected = cmd is "grep" or "sed" or "awk" ? 1 : 0;
+        if (cmd is "cat" or "head" or "tail" or "wc" or "sort" or "uniq" or "grep" or "sed" or "awk")
+            if (operands.Count == expected) return args.Append("-").ToArray();
+        return args;
+    }
+
     private static string GetFullPath(string path, string dir)
     {
+        if (path == "-") return path;
         if (Path.IsPathRooted(path))
             return Path.GetFullPath(path);
         return Path.GetFullPath(Path.Combine(dir, path));

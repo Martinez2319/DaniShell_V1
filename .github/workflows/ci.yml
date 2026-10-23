@@ -1,0 +1,30 @@
+name: Build, regression tests and portable package
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build solution
+        run: dotnet build MyShell.sln -c Release
+      - name: Run regression suite
+        run: dotnet run --project Tests/DaniShell.RegressionTests.csproj -c Release --no-build
+      - name: Publish portable Windows application
+        run: dotnet publish DaniShell/DaniShell.csproj -c Release -r win-x64 --self-contained true -o artifacts/portable
+      - name: Verify package resources
+        shell: pwsh
+        run: |
+          if (!(Test-Path artifacts/portable/DaniShell.exe)) { throw 'Missing executable' }
+          if (!(Test-Path artifacts/portable/commands_cmd.json)) { throw 'Missing command descriptions' }
+          if ((Get-ChildItem artifacts/portable/banners/*.txt).Count -eq 0) { throw 'Missing banners' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DaniShell-Windows-x64
+          path: artifacts/portable/
