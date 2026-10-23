@@ -1,6 +1,6 @@
 # 🚀 DaniShell v4.0
 
-<div align=\"center\">
+<div align="center">
 
 ![GitHub stars](https://img.shields.io/github/stars/Martinez2319/DaniShell?style=social)
 ![GitHub forks](https://img.shields.io/github/forks/Martinez2319/DaniShell?style=social)
@@ -13,7 +13,7 @@
 **La terminal que Windows siempre necesitó**  
 *Comandos Linux nativos + compatibilidad total Windows + personalización cyber extrema*
 
-[🔽 Descargar última versión](https://github.com/Martinez2319/DaniShell/releases) • [🐛 Reportar bug o sugerir feature](https://github.com/Martinez2319/DaniShell/issues)
+[🔽 Descargar última versión](https://github.com/Martinez2319/DaniShell_V1/releases) • [🐛 Reportar bug o sugerir feature](https://github.com/Martinez2319/DaniShell_V1/issues)
 
 </div>
 
@@ -29,7 +29,7 @@
 - ✅ Temas cyberpunk / hacker personalizables
 - ✅ Sistema de plugins en C#, aliases, historial inteligente y autocompletado Tab
 
-> *\"La seguridad no es un producto, es un proceso.\"*
+> *"La seguridad no es un producto, es un proceso."*
 
 ---
 
@@ -38,8 +38,8 @@
 ### 🐧 Comandos Linux integrados
 
 ```bash
-grep -r \"error\" logs/              # Búsqueda recursiva hardcore
-find . -name \"*.cs\" -type f        # Encuentra archivos C# rápido
+grep -r "error" logs/              # Búsqueda recursiva hardcore
+find . -name "*.cs" -type f        # Encuentra archivos C# rápido
 tail -n 50 server.log              # Últimas 50 líneas
 sed 's/old/new/g' config.txt       # Reemplazos masivos
 awk '{print $1, $3}' data.csv      # Extrae columnas como pro
@@ -68,7 +68,7 @@ theme edit mitema        # Editar colores
 
 ### ⚡ Boost de productividad
 
-- 📝 **Aliases personalizados**: `alias deploy=\"dotnet publish -c Release\"`
+- 📝 **Aliases personalizados**: `alias deploy="dotnet publish DaniShell.csproj -c Release"`
 - 🔍 **Historial con búsqueda**: Flechas ↑↓ para navegar
 - ⌨️ **Autocompletado Tab**: Archivos, comandos, paths
 - 🔙 **cd -**: Volver al directorio anterior
@@ -89,16 +89,16 @@ theme edit mitema        # Editar colores
 
 ### Opción recomendada: Portable
 
-1. Ve a → [**Releases**](https://github.com/Martinez2319/DaniShell/releases)
+1. Ve a → [**Releases**](https://github.com/Martinez2319/DaniShell_V1/releases)
 2. Descarga `DaniShell_Portable.zip`
 3. Extrae y ejecuta `DaniShell.exe` → **¡Listo, sin instalar nada!**
 
 ### Desde código fuente
 
 ```bash
-git clone https://github.com/Martinez2319/DaniShell.git
-cd DaniShell
-dotnet build -c Release
+git clone https://github.com/Martinez2319/DaniShell_V1.git
+cd DaniShell_V1/DaniShell
+dotnet build DaniShell.csproj -c Release
 ```
 
 ### Publicar ejecutable único (self-contained)
@@ -130,7 +130,7 @@ ls -la
   💻 Program.cs    📝 README.md    🧩 config.json
 
 [2026-03-15 15:47:05] [DaniShell:daniel] C:\Proyectos>
-grep -r \"TODO\" src/
+grep -r "TODO" src/
 src/core.cs:88: // TODO: Agregar soporte IPv6
 src/utils.cs:42: // TODO: Optimizar búsqueda
 ```
@@ -184,16 +184,16 @@ using DaniShell.Commands;
 
 public class SaludoPlugin : ICommand
 {
-    public string Name => \"saludo\";
-    public string Description => \"Saluda al usuario\";
-    public string Usage => \"saludo [nombre]\";
-    public string Category => \"Personal\";
-    public string[] Aliases => new[] { \"hola\" };
+    public string Name => "saludo";
+    public string Description => "Saluda al usuario";
+    public string Usage => "saludo [nombre]";
+    public string Category => "Personal";
+    public string[] Aliases => new[] { "hola" };
 
     public string Execute(string[] args, string currentDir)
     {
-        string nombre = args.Length > 0 ? args[0] : \"crack\";
-        Console.WriteLine($\"¡Qué onda, {nombre}! 🔥\");
+        string nombre = args.Length > 0 ? args[0] : "crack";
+        Console.WriteLine($"¡Qué onda, {nombre}! 🔥");
         return currentDir;
     }
 }
@@ -205,10 +205,10 @@ public class SaludoPlugin : ICommand
 
 ## 📞 Contacto & Redes
 
-<div align=\"center\">
+<div align="center">
 
 [![Email](https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:ahernandez89017@gmail.com)
-[![Instagram](https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white)](https://instagram.com/tu_usuario)
+[![Instagram](https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white)](https://instagram.com/dani109mar)
 [![GitHub](https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Martinez2319)
 
 **Desarrollado por Daniel**  
@@ -220,16 +220,16 @@ public class SaludoPlugin : ICommand
 
 ## 📄 Licencia
 
-**MIT License** – Libre para usar, modificar, compartir y aprender.
+No se incluye un archivo LICENSE en la raíz del repositorio. Las condiciones de uso deben definirse explícitamente antes de presentar el proyecto con una licencia concreta.
 
 ---
 
-<div align=\"center\">
+<div align="center">
 
 ### ⭐ Si te mola DaniShell, ¡dale estrella al repo! ⭐
 
 **Ayuda a que más gente descubra esta herramienta 🔥**
 
-[🔽 Descargar](https://github.com/Martinez2319/DaniShell/releases) • [📖 Guía de Uso](docs/README_USO.md) • [🐛 Issues](https://github.com/Martinez2319/DaniShell/issues)
+[🔽 Descargar](https://github.com/Martinez2319/DaniShell_V1/releases) • [📖 Código fuente](DaniShell/) • [🐛 Issues](https://github.com/Martinez2319/DaniShell_V1/issues)
 
 </div>
