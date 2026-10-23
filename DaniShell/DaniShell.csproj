@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
@@ -7,12 +7,16 @@
     <RootNamespace>DaniShell</RootNamespace>
     <AssemblyName>DaniShell</AssemblyName>
     <ApplicationIcon>hacker.ico</ApplicationIcon>
-    <Version>4.0.0</Version>
+    <Version>4.0.1</Version>
     <Authors>Daniel</Authors>
     <Description>DaniShell - Terminal avanzada con comandos Linux y Windows</Description>
     <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>true</SelfContained>
+    <SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
+  <ItemGroup>
+    <None Update="banners\**\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="commands_cmd.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

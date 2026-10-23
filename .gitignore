@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/Portable/
+**/portable/
+**/dist/
+artifacts/
+*.user
+*.suo
+.vs/
+.myshell_history
