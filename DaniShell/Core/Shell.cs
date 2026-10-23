@@ -14,7 +14,9 @@ public static class Shell
     private static readonly Random _rng = new();
     private static Dictionary<string, string> _cmdDescriptions = new(StringComparer.OrdinalIgnoreCase);
 
-    public static readonly string Version = "DaniShell v4.0.1";
+    public static readonly string Version = "DaniShell v4.1.0";
+    public static int LastExitCode { get; private set; }
+    public static void SetExitCode(int code) { LastExitCode = code; Environment.SetEnvironmentVariable("DANISHELL_LASTEXITCODE", code.ToString()); }
     public static readonly string Author = "Desarrollado por Daniel";
     public static readonly string City = "Ciudad Juárez, Chihuahua 🇲🇽";
 
@@ -84,13 +86,14 @@ public static class Shell
 
             // Procesar el comando
             try { ExecuteLine(input.Trim(), CurrentDirectory); }
-            catch (ArgumentException ex) { ThemeManager.WriteError(ex.Message); }
+            catch (Exception ex) { SetExitCode(2); ThemeManager.WriteError(ex.Message); }
         }
     }
 
     private static void HandleCtrlC(object? sender, ConsoleCancelEventArgs e)
     {
         e.Cancel = true;
+        if (PipelineRunner.Cancel()) return;
 
         if (_activeProcess != null && !_activeProcess.HasExited)
         {
@@ -183,7 +186,7 @@ public static class Shell
 ║     ██████╔╝██║  ██║██║ ╚████║██║███████║██║  ██║███████╗███████╗███████╗         ║
 ║     ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝╚══════╝╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝         ║
 ║                                                                                   ║
-║                              DaniShell v4.0                                       ║
+║                              DaniShell v4.1.0                                      ║
 ║                   La seguridad no es un producto, es un proceso                   ║
 ╚═══════════════════════════════════════════════════════════════════════════════════╝";
     }
@@ -217,15 +220,17 @@ public static class Shell
     {
         try
         {
-            // Expandir alias
-            input = ExpandAlias(input);
-
             var parts = CommandLine.ParseArguments(input);
             if (parts.Length == 0) return CurrentDirectory;
 
-            var cmd = parts[0].ToLower();
+            var cmd = parts[0].ToLowerInvariant();
+            int previousCode = LastExitCode;
+            LastExitCode = 0;
             var args = parts.Skip(1).ToArray();
 
+            if (cmd == "status") { Console.WriteLine(previousCode); return CurrentDirectory; }
+            if (cmd is "exit" or "quit") Environment.Exit(args.Length > 0 && int.TryParse(args[0], out var requested) ? requested : previousCode);
+            if (NativeShell.TryShortcut(input, CurrentDirectory, out var nativeCode)) { SetExitCode(nativeCode); return CurrentDirectory; }
             // 1. Verificar si es comando builtin
             if (Commands.BuiltinCommands.IsBuiltin(cmd))
             {
@@ -261,7 +266,10 @@ public static class Shell
             var plugin = Plugins.PluginLoader.GetPlugin(cmd);
             if (plugin != null)
             {
-                var result = plugin.Execute(args, CurrentDirectory);
+                string result;
+                if (plugin is Commands.IStreamingCommand streaming)
+                { SetExitCode(streaming.ExecuteStream(args, CurrentDirectory, Console.In, Console.Out, Console.Error)); result = CurrentDirectory; }
+                else result = plugin.Execute(args, CurrentDirectory);
                 BeepDone();
                 return string.IsNullOrEmpty(result) ? CurrentDirectory : result;
             }
@@ -292,38 +300,17 @@ public static class Shell
         return input;
     }
 
-    // Pipelines are buffered text pipelines. Every stage uses the same dispatcher,
-    // so native commands and plugins work without requiring external equivalents.
     public static string ExecuteLine(string input, string directory, string? standardInput = null)
     {
-        var stages = CommandLine.SplitPipeline(ExpandAlias(input));
-        if (stages.Length > 1 && stages.Any(stage =>
-            CommandLine.ParseArguments(stage).FirstOrDefault()?.Equals("ssh", StringComparison.OrdinalIgnoreCase) == true))
-            throw new ArgumentException("SSH usa una consola interactiva; ejecútalo fuera de una tubería.");
+        CurrentDirectory = CommandExecutor.Execute(ExpandAlias(input), directory, standardInput);
+        return CurrentDirectory;
+    }
+    public static string DispatchStage(string input, string directory, bool hasInput)
+    {
         CurrentDirectory = directory;
-        var originalOut = Console.Out;
-        var originalIn = Console.In;
-        string? data = standardInput;
-        try
-        {
-            for (int i = 0; i < stages.Length; i++)
-            {
-                using var output = new StringWriter();
-                if (stages.Length > 1) Console.SetOut(output);
-                if (data != null) Console.SetIn(new StringReader(data));
-                CurrentDirectory = HandleCommand(stages[i], data);
-                if (stages.Length > 1) data = output.ToString();
-                Console.SetOut(originalOut);
-                Console.SetIn(originalIn);
-            }
-            if (stages.Length > 1) originalOut.Write(data);
-            return CurrentDirectory;
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-            Console.SetIn(originalIn);
-        }
+        var result = HandleCommand(ExpandAlias(input), hasInput ? "" : null);
+        Environment.SetEnvironmentVariable("DANISHELL_LASTEXITCODE", LastExitCode.ToString());
+        return result;
     }
 
     public static void ExecuteExternal(string input, string workDir, string? standardInput = null)
@@ -337,72 +324,12 @@ public static class Shell
             psi.ArgumentList.Clear();
             psi.Arguments = "/d /s /c \"" + input + "\"";
         }
-        ProcessRunner.Run(psi, standardInput, p => _activeProcess = p);
+        SetExitCode(ProcessRunner.Run(psi, active: TrackProcess, inputReader: standardInput != null ? Console.In : null));
     }
 
     public static void TrackProcess(Process? process) => _activeProcess = process;
 
-    private static string AutoComplete(string partial)
-    {
-        if (string.IsNullOrWhiteSpace(partial)) return partial;
-
-        var parts = partial.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var last = parts.LastOrDefault() ?? "";
-
-        // Opciones de autocompletado
-        var options = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            // Builtins
-            "help", "exit", "quit", "cls", "clear", "cd", "dir", "ls", "lsd",
-            "whoami", "theme", "runas", "sysinfo", "about", "sound", "history",
-            "alias", "unalias", "config", "plugins", "reload", "banner", "prompt",
-
-            // Linux
-            "cat", "touch", "rm", "cp", "mv", "grep", "pwd", "head", "tail",
-            "mkdir", "rmdir", "chmod", "find", "wc", "sort", "uniq", "diff",
-            "tar", "curl", "wget", "awk", "sed", "echo", "stat", "file", "which",
-            "env", "export", "unset", "printenv",
-
-            // Network
-            "ping", "tracert", "ipinfo", "netstat", "nmap", "nslookup",
-            "httpget", "httphead", "httppost", "ftplist", "ftpget", "ftpput", "ssh"
-        };
-
-        // Agregar aliases
-        foreach (var alias in Configuration.Aliases.Keys)
-            options.Add(alias);
-
-        // Agregar archivos y directorios del directorio actual
-        try
-        {
-            foreach (var d in Directory.GetDirectories(CurrentDirectory))
-                options.Add(Path.GetFileName(d)!);
-            foreach (var f in Directory.GetFiles(CurrentDirectory))
-                options.Add(Path.GetFileName(f)!);
-        }
-        catch { }
-
-        // Buscar coincidencias
-        var matches = options
-            .Where(o => o.StartsWith(last, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(s => s)
-            .ToList();
-
-        if (matches.Count == 1)
-        {
-            parts[^1] = matches[0];
-            return string.Join(' ', parts);
-        }
-        else if (matches.Count > 1)
-        {
-            Console.WriteLine();
-            ThemeManager.WriteMuted(string.Join("   ", matches));
-            PrintPrompt(CurrentDirectory, false);
-            Console.Write(partial);
-        }
-
-        return partial;
-    }
+    private static string AutoComplete(string partial) => Completion.Candidates(partial, CurrentDirectory).FirstOrDefault() ?? partial;
 
     private static void LoadCmdDescriptions()
     {

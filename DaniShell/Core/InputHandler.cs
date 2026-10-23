@@ -19,11 +19,9 @@ public static class InputHandler
 
     public static void AddToHistory(string cmd)
     {
-        if (string.IsNullOrWhiteSpace(cmd)) return;
+        if (string.IsNullOrWhiteSpace(cmd) || cmd.StartsWith(' ')) return;
 
-        // No duplicar el último comando
-        if (_history.Count > 0 && _history[^1] == cmd) return;
-
+        _history.RemoveAll(item => item == cmd);
         _history.Add(cmd);
         if (_history.Count > Configuration.Config.HistoryLimit)
             _history.RemoveAt(0);
@@ -32,6 +30,9 @@ public static class InputHandler
     }
 
     public static List<string> GetHistory() => _history;
+
+    public static IReadOnlyList<string> SearchHistory(string query) => _history.AsEnumerable().Reverse()
+        .Where(item => item.Contains(query, StringComparison.OrdinalIgnoreCase)).ToArray();
 
     public static void ClearHistory()
     {
@@ -45,10 +46,17 @@ public static class InputHandler
         int cursorPos = 0;
         _historyIndex = -1;
         string tempInput = "";
+        var completion = new CompletionCycle();
 
         while (true)
         {
             var key = Console.ReadKey(true);
+            if (key.Key == ConsoleKey.R && key.Modifiers.HasFlag(ConsoleModifiers.Control))
+            {
+                var found = ReverseSearch(currentDir);
+                if (found != null) { input.Clear(); input.Append(found); cursorPos = input.Length; }
+                RedrawInput(input, cursorPos, currentDir); continue;
+            }
 
             switch (key.Key)
             {
@@ -147,7 +155,7 @@ public static class InputHandler
                     break;
 
                 case ConsoleKey.Tab:
-                    var completed = autoComplete(input.ToString());
+                    var completed = completion.Next(input.ToString(), currentDir, key.Modifiers.HasFlag(ConsoleModifiers.Shift));
                     if (!string.IsNullOrEmpty(completed) && completed != input.ToString())
                     {
                         input.Clear();
@@ -172,6 +180,24 @@ public static class InputHandler
                     }
                     break;
             }
+        }
+    }
+
+    private static string? ReverseSearch(string currentDir)
+    {
+        string query = ""; int index = 0;
+        while (true)
+        {
+            var matches = SearchHistory(query);
+            string? choice = matches.Count == 0 ? null : matches[index % matches.Count];
+            ClearLine(); Console.Write($"(Ctrl+R: {query}) {choice}");
+            var key = Console.ReadKey(true);
+            if (key.Key == ConsoleKey.Enter) return choice;
+            if (key.Key == ConsoleKey.Escape || key.Key == ConsoleKey.C && key.Modifiers.HasFlag(ConsoleModifiers.Control)) return null;
+            if (key.Key == ConsoleKey.R && key.Modifiers.HasFlag(ConsoleModifiers.Control)) { index++; continue; }
+            if (key.Key == ConsoleKey.Backspace) { if (query.Length > 0) query = query[..^1]; }
+            else if (!char.IsControl(key.KeyChar)) query += key.KeyChar;
+            index = 0;
         }
     }
 

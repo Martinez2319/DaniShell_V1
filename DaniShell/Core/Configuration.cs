@@ -32,7 +32,7 @@ public class ThemeColors
 
 public static class Configuration
 {
-    private static readonly string ConfigDir = Path.Combine(
+    private static readonly string ConfigDir = Environment.GetEnvironmentVariable("DANISHELL_HOME") ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".danishell");
     
     public static readonly string ConfigFile = Path.Combine(ConfigDir, "config.json");
