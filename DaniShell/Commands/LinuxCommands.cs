@@ -56,6 +56,7 @@ public static class LinuxCommands
                 _ => null!
             };
         }
+        catch (IOException ex) when ((ex.HResult & 0xffff) is 109 or 232) { return currentDir; }
         catch (Exception ex)
         {
             Core.ThemeManager.WriteError($"Error: {ex.Message}");
@@ -98,12 +99,13 @@ public static class LinuxCommands
             }
 
             var lines = ReadInputLines(path);
-            for (int i = 0; i < lines.Length; i++)
+            int i = 0;
+            foreach (var line in lines)
             {
                 if (showLineNumbers)
-                    Console.WriteLine($"{i + 1,6}  {lines[i]}");
+                    Console.WriteLine($"{++i,6}  {line}");
                 else
-                    Console.WriteLine(lines[i]);
+                    Console.WriteLine(line);
             }
         }
         return dir;
@@ -303,9 +305,11 @@ public static class LinuxCommands
             try
             {
                 var lines = ReadInputLines(file);
-                for (int i = 0; i < lines.Length; i++)
+                int i = -1;
+                foreach (var lineValue in lines)
                 {
-                    bool matches = regex.IsMatch(lines[i]);
+                    i++;
+                    bool matches = regex.IsMatch(lineValue);
                     if (invert) matches = !matches;
 
                     if (matches)
@@ -320,7 +324,7 @@ public static class LinuxCommands
                         Console.ResetColor();
 
                         // Resaltar coincidencias
-                        var line = lines[i];
+                        var line = lineValue;
                         var match = regex.Match(line);
                         int lastEnd = 0;
                         while (match.Success)
@@ -435,10 +439,7 @@ public static class LinuxCommands
             if (files.Count > 1)
                 Console.WriteLine($"==> {file} <==");
 
-            var allLines = ReadInputLines(path);
-            var content = allLines.Skip(Math.Max(0, allLines.Length - lines));
-            foreach (var line in content)
-                Console.WriteLine(line);
+            foreach (var line in ReadInputLines(path).TakeLast(Math.Max(0, lines))) Console.WriteLine(line);
         }
         return dir;
     }
@@ -592,102 +593,43 @@ public static class LinuxCommands
     // === wc: Contar líneas, palabras, caracteres ===
     private static string Wc(string[] args, string dir)
     {
-        if (args.Length == 0)
+        bool defaults = !args.Any(a => a.StartsWith("-") && a != "-");
+        bool lines = defaults || args.Contains("-l"), words = defaults || args.Contains("-w"), bytes = defaults || args.Contains("-c");
+        var files = args.Where(a => a == "-" || !a.StartsWith("-")).ToArray();
+        if (files.Length == 0) files = new[] { "-" };
+        long totalLines = 0, totalWords = 0, totalBytes = 0;
+        void Print(long l, long w, long b, string label)
         {
-            Console.WriteLine("Uso: wc [-l] [-w] [-c] <archivo> ...");
-            return dir;
+            if (lines) Console.Write($"{l,8}"); if (words) Console.Write($"{w,8}"); if (bytes) Console.Write($"{b,8}");
+            Console.WriteLine(label == "-" ? "" : " " + label);
         }
-
-        bool defaultCounts = !args.Any(a => a.StartsWith("-") && a != "-");
-        bool countLines = args.Contains("-l") || defaultCounts;
-        bool countWords = args.Contains("-w") || defaultCounts;
-        bool countChars = args.Contains("-c") || defaultCounts;
-
-        var files = args.Where(a => (a == "-" || !a.StartsWith("-"))).ToArray();
-        int totalLines = 0, totalWords = 0, totalChars = 0;
-
         foreach (var file in files)
         {
-            var path = GetFullPath(file, dir);
-            if (path != "-" && !File.Exists(path))
+            string path = GetFullPath(file, dir);
+            if (path != "-" && !File.Exists(path)) { Core.ThemeManager.WriteError($"wc: {file}: No existe"); continue; }
+            TextReader reader = path == "-" ? Console.In : File.OpenText(path);
+            try
             {
-                Core.ThemeManager.WriteError($"wc: {file}: No existe");
-                continue;
+                var count = Core.StreamingText.Count(reader);
+                long byteCount = path == "-" ? count.Bytes : new FileInfo(path).Length;
+                Print(count.Lines, count.Words, byteCount, file);
+                totalLines += count.Lines; totalWords += count.Words; totalBytes += byteCount;
             }
-
-            var content = ReadInputText(path);
-            var lines = content.Count(c => c == '\n');
-            var words = Regex.Matches(content, @"\S+").Count;
-            var chars = path == "-" ? Encoding.UTF8.GetByteCount(content) : checked((int)new FileInfo(path).Length);
-
-            totalLines += lines;
-            totalWords += words;
-            totalChars += chars;
-
-            var output = new StringBuilder();
-            if (countLines) output.Append($"{lines,8}");
-            if (countWords) output.Append($"{words,8}");
-            if (countChars) output.Append($"{chars,8}");
-            if (file != "-") output.Append($" {file}");
-            Console.WriteLine(output.ToString());
+            finally { if (path != "-") reader.Dispose(); }
         }
-
-        if (files.Length > 1)
-        {
-            var output = new StringBuilder();
-            if (countLines) output.Append($"{totalLines,8}");
-            if (countWords) output.Append($"{totalWords,8}");
-            if (countChars) output.Append($"{totalChars,8}");
-            output.Append(" total");
-            Console.WriteLine(output.ToString());
-        }
+        if (files.Length > 1) Print(totalLines, totalWords, totalBytes, "total");
         return dir;
     }
 
-    // === sort: Ordenar líneas ===
     private static string Sort(string[] args, string dir)
     {
-        if (args.Length == 0)
-        {
-            Console.WriteLine("Uso: sort [-r] [-n] [-u] <archivo>");
-            return dir;
-        }
-
-        bool reverse = args.Contains("-r");
-        bool numeric = args.Contains("-n");
-        bool unique = args.Contains("-u");
-        var file = args.FirstOrDefault(a => (a == "-" || !a.StartsWith("-")));
-
-        if (file == null)
-        {
-            Console.WriteLine("Uso: sort [-r] [-n] [-u] <archivo>");
-            return dir;
-        }
-
-        var path = GetFullPath(file, dir);
-        if (path != "-" && !File.Exists(path))
-        {
-            Core.ThemeManager.WriteError($"sort: {file}: No existe");
-            return dir;
-        }
-
-        var lines = ReadInputLines(path).ToList();
-
-        if (numeric)
-            lines = lines.OrderBy(l => double.TryParse(l.Split()[0], out var n) ? n : 0).ToList();
-        else
-            lines.Sort(StringComparer.OrdinalIgnoreCase);
-
-        if (reverse) lines.Reverse();
-        if (unique) lines = lines.Distinct().ToList();
-
-        foreach (var line in lines)
-            Console.WriteLine(line);
-
+        string file = args.FirstOrDefault(a => a == "-" || !a.StartsWith("-")) ?? "-";
+        string path = GetFullPath(file, dir);
+        if (path != "-" && !File.Exists(path)) { Core.ThemeManager.WriteError($"sort: {file}: No existe"); return dir; }
+        foreach (var line in Core.StreamingText.Sort(ReadInputLines(path), args.Contains("-r"), args.Contains("-n"), args.Contains("-u"))) Console.WriteLine(line);
         return dir;
     }
 
-    // === uniq: Eliminar líneas duplicadas consecutivas ===
     private static string Uniq(string[] args, string dir)
     {
         if (args.Length == 0)
@@ -1024,72 +966,30 @@ public static class LinuxCommands
     // === sed: Stream editor básico ===
     private static string Sed(string[] args, string dir)
     {
-        if (args.Length < 2)
-        {
-            Console.WriteLine("Uso: sed 's/patron/reemplazo/[g]' <archivo>");
-            Console.WriteLine("     sed -i 's/patron/reemplazo/g' <archivo>  (editar in-place)");
-            return dir;
-        }
-
         bool inPlace = args.Contains("-i");
-        var nonFlags = args.Where(a => (a == "-" || !a.StartsWith("-"))).ToArray();
-
-        if (nonFlags.Length < 2)
-        {
-            Console.WriteLine("Uso: sed 's/patron/reemplazo/[g]' <archivo>");
-            return dir;
-        }
-
-        var expression = nonFlags[0].Trim(' ', '\'', '"');;
-        var file = nonFlags[1];
-
-        var path = GetFullPath(file, dir);
-        if (path != "-" && !File.Exists(path))
-        {
-            Core.ThemeManager.WriteError($"sed: {file}: No existe");
-            return dir;
-        }
-
-        // Parsear s/pattern/replacement/flags
-        var match = Regex.Match(expression, @"s/(.+?)/(.*)/(g)?");
-        if (!match.Success)
-        {
-            Console.WriteLine("sed: Solo soporta sustitución: s/patron/reemplazo/[g]");
-            return dir;
-        }
-
-        var pattern = match.Groups[1].Value;
-        var replacement = match.Groups[2].Value;
-        bool global = match.Groups[3].Success;
-
-        var lines = ReadInputLines(path);
-        var result = new List<string>();
-
-        foreach (var line in lines)
-        {
-            string newLine;
-            if (global)
-                newLine = Regex.Replace(line, pattern, replacement);
-            else
-                newLine = new Regex(pattern, RegexOptions.None, TimeSpan.FromSeconds(1)).Replace(line, replacement, 1);
-            result.Add(newLine);
-        }
-
+        var operands = args.Where(a => !a.StartsWith("-") || a == "-").ToArray();
+        if (operands.Length < 2) { Core.ThemeManager.WriteError("Uso: sed [-i] 's/patron/reemplazo/[g]' archivo"); return dir; }
+        var match = Regex.Match(operands[0], @"^s/(.+?)/(.*)/(g)?$");
+        if (!match.Success) { Core.ThemeManager.WriteError("sed: expresión no soportada."); return dir; }
+        string path = GetFullPath(operands[1], dir);
         if (inPlace && path == "-") throw new ArgumentException("sed -i requiere un archivo.");
-        if (inPlace)
+        var regex = new Regex(match.Groups[1].Value, RegexOptions.None, TimeSpan.FromSeconds(1));
+        string? temporary = inPlace ? path + "." + Guid.NewGuid().ToString("N") + ".tmp" : null;
+        try
         {
-            File.WriteAllLines(path, result);
-            Core.ThemeManager.WriteSuccess($"Archivo modificado: {file}");
+            using var writer = temporary == null ? null : new StreamWriter(temporary, false, new UTF8Encoding(false));
+            foreach (var line in ReadInputLines(path))
+            {
+                string changed = regex.Replace(line, match.Groups[2].Value, match.Groups[3].Success ? int.MaxValue : 1);
+                if (writer != null) writer.WriteLine(changed); else Console.WriteLine(changed);
+            }
+            writer?.Dispose();
+            if (temporary != null) File.Move(temporary, path, true);
         }
-        else
-        {
-            foreach (var line in result)
-                Console.WriteLine(line);
-        }
+        finally { if (temporary != null && File.Exists(temporary)) File.Delete(temporary); }
         return dir;
     }
 
-    // === xargs: Ejecutar comando con argumentos de stdin ===
     private static string Xargs(string[] args, string dir)
     {
         Console.WriteLine("xargs: Usa el comando nativo del sistema o pipes.");
@@ -1100,37 +1000,14 @@ public static class LinuxCommands
     // === tee: Escribir a archivo y stdout ===
     private static string Tee(string[] args, string dir)
     {
-        if (args.Length == 0)
-        {
-            Console.WriteLine("Uso: echo 'texto' | tee archivo.txt");
-            Console.WriteLine("     tee [-a] <archivo>");
-            return dir;
-        }
-
-        bool append = args.Contains("-a");
-        var file = args.FirstOrDefault(a => !a.StartsWith("-"));
-
-        if (file == null) return dir;
-
-        var path = GetFullPath(file, dir);
-
-        var lines = new List<string>();
+        string? file = args.FirstOrDefault(a => !a.StartsWith("-"));
+        if (file == null) { Core.ThemeManager.WriteError("Uso: tee [-a] archivo"); return dir; }
+        using var writer = new StreamWriter(GetFullPath(file, dir), args.Contains("-a"), new UTF8Encoding(false));
         string? line;
-        while ((line = Console.ReadLine()) != null)
-        {
-            Console.WriteLine(line);
-            lines.Add(line);
-        }
-
-        if (append)
-            File.AppendAllLines(path, lines);
-        else
-            File.WriteAllLines(path, lines);
-
+        while ((line = Console.In.ReadLine()) != null) { writer.WriteLine(line); Console.WriteLine(line); }
         return dir;
     }
 
-    // === echo: Mostrar texto ===
     private static string Echo(string[] args)
     {
         bool noNewline = args.Contains("-n");
@@ -1381,13 +1258,11 @@ public static class LinuxCommands
     // === Helper ===
     private static string ReadInputText(string path) => path == "-" ? Console.In.ReadToEnd() : File.ReadAllText(path);
 
-    private static string[] ReadInputLines(string path)
+    private static IEnumerable<string> ReadInputLines(string path)
     {
-        if (path != "-") return File.ReadAllLines(path);
-        var lines = new List<string>();
-        string? line;
-        while ((line = Console.In.ReadLine()) != null) lines.Add(line);
-        return lines.ToArray();
+        if (path != "-") { foreach (var line in File.ReadLines(path)) yield return line; yield break; }
+        string? input;
+        while ((input = Console.In.ReadLine()) != null) yield return input;
     }
 
     private static string[] PrepareStandardInput(string cmd, string[] args)

@@ -1,4 +1,6 @@
 name: Build, regression tests and portable package
+permissions:
+  contents: read
 on:
   push:
   pull_request:
@@ -24,7 +26,45 @@ jobs:
           if (!(Test-Path artifacts/portable/DaniShell.exe)) { throw 'Missing executable' }
           if (!(Test-Path artifacts/portable/commands_cmd.json)) { throw 'Missing command descriptions' }
           if ((Get-ChildItem artifacts/portable/banners/*.txt).Count -eq 0) { throw 'Missing banners' }
+      - name: Smoke test portable executable and native engines
+        shell: pwsh
+        run: |
+          $env:DANISHELL_HOME = Join-Path $env:RUNNER_TEMP 'danishell-smoke'
+          $text = & ./artifacts/portable/DaniShell.exe -c 'echo -e "b\na" | sort'
+          if ($LASTEXITCODE -ne 0 -or ($text -join ',') -ne 'a,b') { throw 'Portable pipeline failed' }
+          $value = & ./artifacts/portable/DaniShell.exe --shell powershell -c '$n=41; $n+1'
+          if ($LASTEXITCODE -ne 0 -or "$value".Trim() -ne '42') { throw 'Native PowerShell failed' }
+          & ./artifacts/portable/DaniShell.exe --shell cmd -c 'exit 7'
+          if ($LASTEXITCODE -ne 7) { throw 'Native CMD exit code failed' }
+      - name: Package release
+        shell: pwsh
+        run: |
+          Copy-Item README.md,CHANGELOG.md -Destination artifacts/portable
+          Compress-Archive -Path artifacts/portable/* -DestinationPath artifacts/DaniShell-Windows-x64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: DaniShell-Windows-x64
-          path: artifacts/portable/
+          path: artifacts/DaniShell-Windows-x64.zip
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: verify
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: DaniShell-Windows-x64
+          path: artifacts
+      - name: Publish versioned release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $version = ([xml](Get-Content DaniShell/DaniShell.csproj)).Project.PropertyGroup.Version
+          if ($tag -ne "v$version") { throw 'Tag and project version do not match' }
+          $asset = "artifacts/DaniShell-$tag-Windows-x64.zip"
+          Move-Item -LiteralPath artifacts/DaniShell-Windows-x64.zip -Destination $asset
+          gh release create $tag $asset --verify-tag --title "DaniShell $tag" --notes-file CHANGELOG.md

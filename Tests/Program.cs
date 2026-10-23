@@ -11,11 +11,14 @@ if (args.FirstOrDefault() == "--flood")
 if (args.FirstOrDefault() == "--copy") { Console.Write(Console.In.ReadToEnd()); return 0; }
 if (args.FirstOrDefault() == "--arguments") { Console.Write(string.Join("|", args.Skip(1))); return 0; }
 if (args.FirstOrDefault() == "--exit") return 7;
+if (args.FirstOrDefault() == "--slow") { Console.WriteLine("first"); Console.Out.Flush(); Thread.Sleep(10_000); Console.WriteLine("last"); return 0; }
 
 var scratch = Path.Combine(Path.GetTempPath(), "DaniShell-tests-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(scratch);
 var initialDirectory = Directory.GetCurrentDirectory();
 int passed = 0;
+Environment.SetEnvironmentVariable("DANISHELL_HOME", Path.Combine(scratch, "config"));
+Configuration.Initialize();
 Configuration.Config.SoundEnabled = false;
 
 void Equal(string expected, string actual)
@@ -53,12 +56,12 @@ try
     });
     Test("empty pipeline stage is rejected", () =>
     {
-        try { CommandLine.SplitPipeline("echo a || sort"); }
+        try { CommandSyntax.Parse("echo a | | sort"); }
         catch (ArgumentException) { return; }
         throw new Exception("Empty stage accepted");
     });
     Test("echo escapes and no trailing newline", () => Equal("a\nb", Run(@"echo -n -e 'a\nb'")));
-    Test("interactive SSH is rejected inside a buffered pipeline", () =>
+    Test("interactive SSH is rejected inside a text pipeline", () =>
     {
         try { Shell.ExecuteLine("echo data | ssh example.invalid", scratch); }
         catch (ArgumentException) { return; }
@@ -117,6 +120,7 @@ try
         var info = ProcessRunner.Create(Environment.ProcessPath!, new[] { "--exit" }, scratch);
         Equal("7", ProcessRunner.RunInteractive(info).ToString());
     });
+    AdvancedTests.Run(scratch, Test, Run);
     Console.WriteLine($"{passed} regression tests passed.");
     return 0;
 }

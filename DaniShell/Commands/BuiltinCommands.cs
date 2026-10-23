@@ -389,8 +389,11 @@ public static class BuiltinCommands
 
     private static void ShowMainHelp()
     {
-        Core.ThemeManager.WriteLine("=== DaniShell v4.0 - Ayuda ===", "Banner");
+        Core.ThemeManager.WriteLine("=== DaniShell v4.1.0 - Ayuda ===", "Banner");
 
+        Console.WriteLine("  shell cmd | shell powershell - Sesiones nativas; exit vuelve a DaniShell");
+        Console.WriteLine("  Tab/Shift+Tab: completar; Ctrl+R: buscar historial; status: código de salida");
+        Console.WriteLine("  Sintaxis propia: |, &&, ||, <, >, >>, 2>, 2>>, 2>&1");
         Core.ThemeManager.WriteLine("Comandos Internos:", "Info");
         Console.WriteLine("  cd, ls/dir, clear/cls, whoami, theme, runas, sysinfo, about");
         Console.WriteLine("  sound, history, alias, unalias, config, plugins, banner, prompt, exit");
@@ -578,7 +581,7 @@ Comandos:
     private static string About(string dir)
     {
         Core.ThemeManager.WriteLine("=== DaniShell ===", "Banner");
-        Console.WriteLine($"  Versión: 4.0.0");
+        Console.WriteLine($"  Versión: 4.1.0");
         Console.WriteLine($"  Autor: Daniel");
         Console.WriteLine($"  Ubicación: Ciudad Juárez, Chihuahua 🇲🇽");
         Console.WriteLine($"  Descripción: Terminal avanzada con comandos Linux y Windows");
@@ -819,7 +822,7 @@ Comandos:
 
     private static string Version(string dir)
     {
-        Console.WriteLine("DaniShell v4.0.0");
+        Console.WriteLine("DaniShell v4.1.0");
         return dir;
     }
 }

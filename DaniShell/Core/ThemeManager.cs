@@ -32,7 +32,8 @@ public static class ThemeManager
 
     public static void WriteError(string text)
     {
-        WriteLine(text, "Error");
+        Shell.SetExitCode(Shell.LastExitCode == 0 ? 1 : Shell.LastExitCode);
+        Console.Error.WriteLine(text);
     }
 
     public static void WriteSuccess(string text)

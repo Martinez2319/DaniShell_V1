@@ -7,7 +7,7 @@
     <RootNamespace>DaniShell</RootNamespace>
     <AssemblyName>DaniShell</AssemblyName>
     <ApplicationIcon>hacker.ico</ApplicationIcon>
-    <Version>4.0.1</Version>
+    <Version>4.1.0</Version>
     <Authors>Daniel</Authors>
     <Description>DaniShell - Terminal avanzada con comandos Linux y Windows</Description>
     <PublishSingleFile>true</PublishSingleFile>
@@ -18,5 +18,6 @@
   <ItemGroup>
     <None Update="banners\**\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="commands_cmd.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="Launchers\*.cmd" TargetPath="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

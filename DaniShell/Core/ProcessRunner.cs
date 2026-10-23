@@ -11,11 +11,11 @@ public static class ProcessRunner
         return info;
     }
 
-    public static int Run(ProcessStartInfo info, string? input = null, Action<Process?>? active = null)
+    public static int Run(ProcessStartInfo info, string? input = null, Action<Process?>? active = null, TextReader? inputReader = null)
     {
         info.RedirectStandardOutput = true;
         info.RedirectStandardError = true;
-        info.RedirectStandardInput = input != null;
+        info.RedirectStandardInput = input != null || inputReader != null;
         info.CreateNoWindow = true;
         using var process = new Process { StartInfo = info };
         try
@@ -25,7 +25,7 @@ public static class ProcessRunner
             // Drain both pipes concurrently, before writing stdin or waiting for exit.
             var stdout = Pump(process.StandardOutput, Console.Out);
             var stderr = Pump(process.StandardError, Console.Error);
-            var stdin = input == null ? Task.CompletedTask : WriteInput(process, input);
+            var stdin = inputReader != null ? WriteReader(process, inputReader) : input == null ? Task.CompletedTask : WriteInput(process, input);
             Task.WhenAll(stdout, stderr, stdin, process.WaitForExitAsync()).GetAwaiter().GetResult();
             return process.ExitCode;
         }
@@ -51,6 +51,12 @@ public static class ProcessRunner
         while ((count = await reader.ReadAsync(buffer)) != 0) await writer.WriteAsync(buffer.AsMemory(0, count));
     }
 
+    private static async Task WriteReader(Process process, TextReader input)
+    {
+        try { char[] buffer = new char[4096]; int count; while ((count = await input.ReadAsync(buffer)) > 0) await process.StandardInput.WriteAsync(buffer.AsMemory(0, count)); }
+        catch (IOException) { }
+        finally { process.StandardInput.Close(); }
+    }
     private static async Task WriteInput(Process process, string input)
     {
         try { await process.StandardInput.WriteAsync(input); }

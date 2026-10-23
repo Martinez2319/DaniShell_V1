@@ -9,5 +9,12 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\DaniShell\DaniShell.csproj" />
+    <ProjectReference Include="..\Samples\HelloPlugin\HelloPlugin.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
+  <Target Name="CopyFixturePlugin" AfterTargets="Build">
+    <ItemGroup>
+      <FixturePlugin Include="../Samples/HelloPlugin/bin/$(Configuration)/net8.0/HelloPlugin.dll;../Samples/HelloPlugin/HelloPlugin.plugin.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FixturePlugin)" DestinationFolder="$(OutDir)fixture-plugin" />
+  </Target>
 </Project>
