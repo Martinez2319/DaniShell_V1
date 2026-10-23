@@ -36,6 +36,8 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or "$value".Trim() -ne '42') { throw 'Native PowerShell failed' }
           & ./artifacts/portable/DaniShell.exe --shell cmd -c 'exit 7'
           if ($LASTEXITCODE -ne 7) { throw 'Native CMD exit code failed' }
+          # A nonzero native code is expected above; finish the smoke test successfully.
+          exit 0
       - name: Package release
         shell: pwsh
         run: |
